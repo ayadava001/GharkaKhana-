@@ -1,0 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@700;800&family=Noto+Sans+Devanagari:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", sans-serif;
+  --font-hindi: "Noto Sans Devanagari", sans-serif;
+
+  --color-primary-bg: #0A0A0A;
+  --color-secondary-bg: #141414;
+  --color-tertiary-bg: #1E1E1E;
+  --color-primary-text: #FFFFFF;
+  --color-secondary-text: #A0A0A0;
+  --color-accent-start: #FFFFFF;
+  --color-accent-mid: #C0C0C0;
+  --color-accent-end: #808080;
+  --color-success: #4ADE80;
+  --color-warning: #FB923C;
+
+  --radius-card: 16px;
+  --radius-button: 12px;
+  --radius-input: 12px;
+}
+
+@layer base {
+  body {
+    @apply bg-primary-bg text-primary-text font-sans antialiased selection:bg-white/20;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, h3 {
+    @apply font-display font-bold tracking-tight;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10;
+  }
+
+  .accent-gradient {
+    background: linear-gradient(135deg, var(--color-accent-start) 0%, var(--color-accent-mid) 50%, var(--color-accent-end) 100%);
+  }
+
+  .shimmer {
+    @apply relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent;
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
