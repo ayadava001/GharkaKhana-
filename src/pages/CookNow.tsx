@@ -82,6 +82,7 @@ export default function CookNow() {
   };
 
   const handleFindRecipes = async () => {
+    console.log("handleFindRecipes triggered");
     if (userIngredients.length === 0) {
       showToast("Pehle ingredients add karo! 🧅");
       return;
@@ -97,6 +98,7 @@ export default function CookNow() {
     setError(null);
     
     try {
+      console.log("Calling generateRecipes...");
       const result = await generateRecipes({
         ingredients: userIngredients,
         diet: 'Both', // Should be from user profile/state
@@ -108,8 +110,10 @@ export default function CookNow() {
         isPremium
       });
 
+      console.log("generateRecipes result received:", result);
+
       if (result.recipes.length === 0) {
-        throw new Error("No recipes found");
+        throw new Error(result.chefMessage || "No recipes found");
       }
 
       setRecipes(result.recipes);

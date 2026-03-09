@@ -1,6 +1,37 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "" });
+/**
+ * Helper to call server-side AI API
+ */
+async function callServerAI(payload: any) {
+  console.log("Calling Server AI API...");
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
+  try {
+    const response = await fetch("/api/recipes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to generate content");
+    }
+
+    return response.json();
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error("AI Chef thoda zyada time le raha hai. Phir se try karo!");
+    }
+    throw error;
+  }
+}
 
 export interface Recipe {
   id: string;
@@ -66,39 +97,22 @@ export interface MealPlanResponse {
   chef_note: string;
 }
 
-const SYSTEM_INSTRUCTION = `You are "GharKaKhana AI Chef" — an expert Indian home cooking assistant.
+const SYSTEM_INSTRUCTION = `You are "GharKaKhana AI Chef" (Chef GK). Warm, encouraging Indian mother tone. Mix Hindi-English (Hinglish).
+Only discuss Indian cooking, recipes, meal planning, and nutrition.
 
-## YOUR IDENTITY
-- Name: Chef GK (GharKaKhana)
-- Personality: Warm, encouraging, like a loving Indian mother who knows every recipe. Mix Hindi and English naturally (Hinglish).
-- Tone: Friendly, practical, never judgmental about skill level
-- You ONLY discuss cooking, recipes, meal planning, nutrition, and Indian food culture. Politely decline other topics.
+Assume these staples are ALWAYS available: Salt, Water, Oil, Turmeric, Red Chili Powder, Black Pepper, Sugar.
 
-## YOUR CORE FUNCTION
-When given a list of ingredients available at home, you suggest authentic Indian recipes that can be made using ONLY those ingredients (plus basic pantry staples that every Indian kitchen has).
+RULES:
+1. Maximize use of user ingredients.
+2. Sort by match percentage.
+3. Mix: 1 quick (<15m), 1 main, 1 snack.
+4. Free: 5 recipes. Premium: 8 recipes.
+5. Authentic Indian only.
+6. Detailed steps for beginners.
+7. Use Indian terms: "2 chamach", "tadka", "bhuno", etc.
+8. Pro-tips for 2-3 steps.
 
-## BASIC PANTRY STAPLES (assume always available):
-Namak (Salt), Pani (Water), Tel (Oil — any), Haldi (Turmeric), Lal Mirch Powder (Red Chili), Kali Mirch (Black Pepper), Cheeni (Sugar)
-
-## RULES FOR RECIPE GENERATION
-1. ALWAYS prioritize recipes that use MAXIMUM user ingredients and MINIMUM extra ingredients
-2. Sort by ingredient_match_percent (highest first)
-3. Include a MIX: at least 1 quick recipe (<15 min), 1 main course, 1 snack/side dish
-4. Give 5 recipes for free users, up to 15 for premium
-5. Every recipe MUST be authentic Indian — no western fusion unless specifically asked
-6. Include regional variety when possible (don't just give North Indian every time)
-7. ALWAYS use Hinglish in descriptions and steps (Hindi words written in English)
-8. Measurements should be in Indian style: "2 chamach" (tablespoons), "1 katori" (bowl), "chutki bhar" (pinch) — along with standard measurements
-9. Steps should be DETAILED enough for a beginner
-10. Include pro_tips for at least 2-3 steps per recipe
-
-## WHAT YOU MUST NEVER DO
-- Never suggest raw meat consumption
-- Never suggest alcohol-based recipes unless asked
-- Never give medical/health advice beyond basic nutrition
-- Never respond to non-food topics
-- Never make up nutritional values — if unsure, give approximate ranges with disclaimer
-- Never suggest recipes requiring expensive/imported ingredients unless user specifically has them`;
+NEVER: raw meat, alcohol, medical advice, non-food topics.`;
 
 const recipeSchema = {
   type: Type.OBJECT,
@@ -209,21 +223,10 @@ export async function generateWeeklyPlan(params: { ingredients: string[], diet: 
   Response MUST be in the exact JSON format matching the MealPlanResponse interface.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: prompt,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        temperature: 0.7,
-        maxOutputTokens: 4096,
-      },
+    return await callServerAI({
+      prompt,
+      systemInstruction: SYSTEM_INSTRUCTION,
     });
-
-    const text = response.text;
-    if (!text) throw new Error("No response from AI");
-
-    return JSON.parse(text);
   } catch (error) {
     console.error("Error generating meal plan:", error);
     throw error;
@@ -244,39 +247,39 @@ Preferences:
 - Family size: ${params.familySize} logon ke liye
 - Health goal: ${params.healthGoal}
 
-In ingredients se ${params.isPremium ? 15 : 5} authentic Indian recipes suggest karo.
+In ingredients se ${params.isPremium ? 8 : 5} authentic Indian recipes suggest karo. (Premium users get more recipes, but we limit to 8 for stability).
 
-Response MUST be in the exact JSON format as defined in your system instructions. No extra text outside JSON.`;
+Response MUST be in the exact JSON format as defined in your system instructions. No extra text outside JSON. Ensure the JSON is complete and not truncated.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: prompt,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        responseSchema: recipeSchema,
-        temperature: 0.7,
-        maxOutputTokens: 4096,
-      },
+    const data = await callServerAI({
+      prompt,
+      systemInstruction: SYSTEM_INSTRUCTION,
+      responseSchema: recipeSchema,
     });
 
-    const text = response.text;
-    if (!text) throw new Error("No response from AI");
+    if (!data || !data.recipes) {
+      console.error("Invalid data structure from server:", data);
+      throw new Error("AI Chef ne sahi format mein jawab nahi diya.");
+    }
 
-    const data = JSON.parse(text);
     const recipes = data.recipes.map((r: any) => ({
       ...r,
-      image: `https://picsum.photos/seed/${r.name_english.replace(/\s/g, '')}/800/600`
+      image: `https://picsum.photos/seed/${r.name_english?.replace(/\s/g, '') || 'food'}/800/600`
     }));
 
     return {
       recipes,
-      chefMessage: data.chef_message,
-      dailyTip: data.daily_tip
+      chefMessage: data.chef_message || "Arrey beta, dekho maine kya banaya!",
+      dailyTip: data.daily_tip || "Khana hamesha pyaar se banao."
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating recipes:", error);
-    return { recipes: [], chefMessage: "Maaf karna beta, kuch gadbad ho gayi. Phir se try karo!", dailyTip: "" };
+    const errorMessage = error.message || "Maaf karna beta, kuch gadbad ho gayi.";
+    return { 
+      recipes: [], 
+      chefMessage: errorMessage, 
+      dailyTip: "Tip: Settings mein jaake API Key check karein." 
+    };
   }
 }
